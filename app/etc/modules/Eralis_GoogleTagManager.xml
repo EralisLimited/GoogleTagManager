@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<config>
+    <modules>
+        <Eralis_GoogleTagManager>
+            <active>true</active>
+            <codePool>community</codePool>
+                        <depends>
+                <Mage_Catalog/>
+<Mage_Checkout/>
+<Mage_Cms/>
+
+            </depends>        </Eralis_GoogleTagManager>
+    </modules>
+</config>
