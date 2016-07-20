@@ -1,0 +1,6 @@
+<?php /** @var Eralis_GoogleTagManager_Block_Datalayer $this */ ?>
+<?php if ($this->getDataLayer()): ?>
+<script>
+    <?php echo $this->getDataLayerName(); ?> = [<?php echo $this->getDataLayer(); ?>]
+</script>
+<?php endif; ?>

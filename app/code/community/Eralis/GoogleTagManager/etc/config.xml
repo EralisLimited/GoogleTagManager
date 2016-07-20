@@ -25,26 +25,53 @@
     </global>
     <frontend>
         <events>
-            <controller_action_layout_render_before>
+            <checkout_onepage_controller_success_action>
                 <observers>
                     <eralis_googletagmanager_checkout_success>
                         <class>eralis_googletagmanager/observer</class>
                         <method>addTransactionData</method>
                     </eralis_googletagmanager_checkout_success>
                 </observers>
-            </controller_action_layout_render_before>
+            </checkout_onepage_controller_success_action>
+            <checkout_multishipping_controller_success_action>
+                <observers>
+                    <eralis_googletagmanager_checkout_success>
+                        <class>eralis_googletagmanager/observer</class>
+                        <method>addTransactionData</method>
+                    </eralis_googletagmanager_checkout_success>
+                </observers>
+            </checkout_multishipping_controller_success_action>
         </events>
+        <layout>
+            <updates>
+                <eralis_googletagmanager>
+                    <file>eralis/googletagmanager.xml</file>
+                </eralis_googletagmanager>
+            </updates>
+        </layout>
     </frontend>
     <default>
         <eralis_googletagmanager>
             <general>
-                <active>0</active>
+                <enabled>1</enabled>
             </general>
             <data_layer>
                 <data_layer_name>dataLayer</data_layer_name>
-                <transactions>0</transactions>
-                <visitors>0</visitors>
+                <customer_data_enabled>1</customer_data_enabled>
+                <order_data_enabled>1</order_data_enabled>
+                <quote_data_enabled>1</quote_data_enabled>
             </data_layer>
+            <customer_data>
+                <existing_customer_mode>grand_total,basket,registered</existing_customer_mode>
+                <include_recently_viewed_products>1</include_recently_viewed_products>
+                <recently_viewed_product_limit>10</recently_viewed_product_limit>
+            </customer_data>
+            <quote_data>
+                <include_invisible_items>0</include_invisible_items>
+            </quote_data>
+            <order_data>
+                <include_invisible_items>0</include_invisible_items>
+            </order_data>
         </eralis_googletagmanager>
     </default>
 </config>

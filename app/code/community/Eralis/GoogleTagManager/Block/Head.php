@@ -12,4 +12,12 @@ class Eralis_GoogleTagManager_Block_Head extends Eralis_GoogleTagManager_Block_A
         }
         return parent::_construct();
     }
+
+    /**
+     * @return string
+     */
+    public function getDataLayerBlockHtml()
+    {
+        return $this->getChildHtml('datalayer');
+    }
 }

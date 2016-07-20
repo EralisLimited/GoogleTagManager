@@ -13,16 +13,18 @@ class Eralis_GoogleTagManager_Model_Observer
 
             $data = new Varien_Object(array('show_transaction_data' => false));
 
+            $orderIds = $observer->getEvent()->getOrderIds();
+
             $fullActionName = $this->_getFullActionName();
 
-            if (in_array($fullActionName, $this->_getLayoutHandles())) {
-                $data->setData('show_transaction_data', true);
+            if (!empty($orderIds) && in_array($fullActionName, $this->_getLayoutHandles())) {
+                $data->setData('order_ids', $orderIds);
             }
 
-            //No need to go Victor Frankenstein on our module, heres a handle event to make you logical changes :D
-            Mage::dispatchEvent('eralis_googletagmanager_show_transaction_data', array('data' => $data, 'full_action_name' => $fullActionName));
+//            //No need to go Victor Frankenstein on our module, heres a handle event to make you logical changes :D
+//            Mage::dispatchEvent('eralis_googletagmanager_show_transaction_data', array('order_ids' => $data, 'full_action_name' => $fullActionName));
 
-            Mage::getSingleton('core/layout')->getBlock('eralis.googletagmanager.datalayer')->setData('show_transaction_data', $data->getShowTransactionData());
+            Mage::getSingleton('core/layout')->getBlock('eralis.googletagmanager.datalayer')->setData('order_ids', $data->getOrderIds());
 
         } catch (Exception $e) {
 
@@ -43,8 +45,8 @@ class Eralis_GoogleTagManager_Model_Observer
         $layoutHandles = new Varien_Object(explode(',',
             Mage::getStoreConfig('eralis_googletagmanager/data_layer/transaction_layout_handles')));
 
-        //Again we're being nice, you can use this even to add you're own logic to add/remove layout handles you want the transaction data to appear :)
-        Mage::dispatchEvent('eralis_googletagmanager_transaction_layout_handles', array('layout_handles' => $layoutHandles));
+//        //Again we're being nice, you can use this even to add you're own logic to add/remove layout handles you want the transaction data to appear :)
+//        Mage::dispatchEvent('eralis_googletagmanager_transaction_layout_handles', array('layout_handles' => $layoutHandles));
 
         return $layoutHandles->toArray();
     }
@@ -57,9 +59,6 @@ class Eralis_GoogleTagManager_Model_Observer
      */
     protected function _getFullActionName()
     {
-        $request = Mage::app()->getRequest();
-        return $request->getRequestedRouteName()
-            . '_' . $request->getRequestedControllerName()
-            . '_' . $request->getRequestedActionName();
+        return Mage::helper('eralis_googletagmanager')->getFullActionName();
     }
 }
