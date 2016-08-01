@@ -16,17 +16,16 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
         $dataLayer += $this->_getQuoteData();
         $dataLayer += $this->_getOrderData();
         $dataLayer += $this->_getCategoryData();
-        // @todo Cripps do this!
-//        $dataLayer += $this->_getProductData();
+        $dataLayer += $this->_getProductData();
 
         $dataLayer = new Varien_Object($dataLayer);
 
         Mage::dispatchEvent('eralis_googletagmanager_data_layer', array('data_layer' => $dataLayer, 'block' => $this));
 
         if (Mage::getIsDeveloperMode()) {
-            return json_encode($dataLayer->getData(), JSON_PRETTY_PRINT);
+            return json_encode($dataLayer->getData(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         }
-        return json_encode($dataLayer->getData());
+        return json_encode($dataLayer->getData(), JSON_UNESCAPED_SLASHES);
     }
 
     /**
@@ -44,15 +43,149 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
      * @return array
      * @throws Mage_Core_Exception
      */
+    protected function _getProductData()
+    {
+        $data = array();
+        /* @var $product Mage_Catalog_Model_Product */
+        $product = $this->getProduct();
+
+        if ($product) {
+            $data['productName'] = $this->jsQuoteEscape($product->getName());
+
+            $_request = Mage::getSingleton('tax/calculation')->getDefaultRateRequest();
+
+            $_request->setProductClassId($product->getTaxClassId());
+            $defaultTax = Mage::getSingleton('tax/calculation')->getRate($_request);
+
+            $_request = Mage::getSingleton('tax/calculation')->getRateRequest();
+            $_request->setProductClassId($product->getTaxClassId());
+            $currentTax = Mage::getSingleton('tax/calculation')->getRate($_request);
+
+            $_regularPrice = $product->getPrice();
+            $_finalPrice = $product->getFinalPrice();
+            if ($product->getTypeId() == Mage_Catalog_Model_Product_Type::TYPE_BUNDLE) {
+                $_priceInclTax = Mage::helper('tax')->getPrice($product, $_finalPrice, true,
+                    null, null, null, null, null, false);
+                $_priceExclTax = Mage::helper('tax')->getPrice($product, $_finalPrice, false,
+                    null, null, null, null, null, false);
+            } else {
+                $_priceInclTax = Mage::helper('tax')->getPrice($product, $_finalPrice, true);
+                $_priceExclTax = Mage::helper('tax')->getPrice($product, $_finalPrice);
+            }
+            $_tierPrices = array();
+            $_tierPricesInclTax = array();
+            foreach ($product->getTierPrice() as $tierPrice) {
+                $_tierPrices[] = Mage::helper('core')->currency(
+                    Mage::helper('tax')->getPrice($product, (float)$tierPrice['website_price'], false) - $_priceExclTax
+                    , false, false);
+                $_tierPricesInclTax[] = Mage::helper('core')->currency(
+                    Mage::helper('tax')->getPrice($product, (float)$tierPrice['website_price'], true) - $_priceInclTax
+                    , false, false);
+            }
+
+            /** @var Mage_Catalog_Model_Resource_Category_Collection $categoryCollection */
+            $categoryCollection = Mage::getResourceModel('catalog/category_collection')
+                ->setStore(Mage::app()->getStore())
+                ->addAttributeToSelect('name')
+                ->addFieldToFilter('entity_id', array('in' => $product->getCategoryIds()))
+                ->addFieldToFilter('is_active', 1)
+                ->addPathsFilter('1/' . Mage::app()->getStore()->getRootCategoryId() . '/');
+
+            $data += array(
+                'productId'           => $product->getId(),
+                'productPrice'        => Mage::helper('core')->currency($_finalPrice, false, false),
+                'productOldPrice'     => Mage::helper('core')->currency($_regularPrice, false, false),
+                'priceInclTax'        => Mage::helper('core')->currency($_priceInclTax, false, false),
+                'priceExclTax'        => Mage::helper('core')->currency($_priceExclTax, false, false),
+                'defaultTax'          => $defaultTax,
+                'currentTax'          => $currentTax,
+                'tierPrices'          => $_tierPrices,
+                'tierPricesInclTax'   => $_tierPricesInclTax,
+                'categories'          => implode('|', $categoryCollection->getColumnValues('name'))
+            );
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array
+     * @throws Mage_Core_Exception
+     */
     protected function _getCategoryData()
     {
         $data = array();
         $category = $this->getCategory();
         if ($category && !$this->getProduct()) {
-            $data['categoryName'] = $this->jsQuoteEscape($category->getName());
-            // @todo Cripps do this!
-            $data['categoryPath'] = '';
-            /** @var Mage_Catalog_Block_Product_List $block */
+            /** @var Mage_Catalog_Model_Resource_Category_Collection $parentCategoryCollection */
+            $parentCategoryCollection = Mage::getResourceModel('catalog/category_collection')
+                ->setStore(Mage::app()->getStore())
+                ->addAttributeToSelect('name')
+                ->addAttributeToSelect('url_key')
+                ->addFieldToFilter('entity_id', array('in' => $category->getPathIds()))
+                ->addFieldToFilter('is_active', 1)
+                ->addOrder('level', Mage_Catalog_Model_Resource_Category_Collection::SORT_ORDER_ASC)
+                ->addPathsFilter('1/' . Mage::app()->getStore()->getRootCategoryId() . '/');
+            $data['categoryName']       = $this->jsQuoteEscape($category->getName());
+            $data['categoryUrlKey']     = $this->jsQuoteEscape($category->getUrlKey());
+            $data['categoryUrlKeyPath'] = $this->jsQuoteEscape(implode('/', $parentCategoryCollection->getColumnValues('url_key')));
+            $data['categoryNamePath']   = $this->jsQuoteEscape(implode('|', $parentCategoryCollection->getColumnValues('name')));
+
+            $productCollection = $this->_getProductListCollection();
+
+            $products = array();
+            $collection = Mage::getResourceModel('catalog/category_collection')
+                ->joinField('product_id',
+                    'catalog/category_product',
+                    'product_id',
+                    'category_id = entity_id',
+                    null)
+                ->addFieldToFilter('product_id', $productCollection->getColumnValues('entity_id'))
+                ->addAttributeToSelect('name')
+                ->setStoreId(Mage::app()->getStore()->getId())
+                ->groupByAttribute('entity_id');
+            foreach ($productCollection as $product) {
+                $categories = $collection->getItemsByColumnValue('product_id', $product->getId());
+                $categoryNames = array();
+                foreach ($categories as $category) {
+                    if ($category->getLevel() > 1) {
+                        $categoryNames[] = $this->jsQuoteEscape($category->getName());
+                    }
+                }
+                $products[$product->getSku()] = array(
+                    'name'          => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getName())),
+                    'sku'           => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getSku())),
+                    'category'      => implode('|', $categoryNames),
+                    'price'         => (double)number_format($product->getFinalPrice(), 2, '.', ''),
+                );
+            }
+
+            foreach ($products as $product) {
+                $data['categoryProducts'][] = $product;
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * @return Mage_Catalog_Model_Product
+     */
+    public function getProduct()
+    {
+        return Mage::registry('current_product');
+    }
+
+    /**
+     * @return Mage_Catalog_Model_Category
+     */
+    public function getCategory()
+    {
+        return Mage::registry('current_category');
+    }
+
+    protected function _getProductListCollection()
+    {
+        if (!Mage::registry('eralis_product_list')) {
             $block = Mage::getSingleton('core/layout')->getBlock('product_list');
 
             /** @var Mage_Catalog_Model_Resource_Product_Collection $productCollection */
@@ -83,54 +216,73 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                 'collection' => $productCollection
             ));
 
-            $productCollection->load();
+            $this->_getProductCollection()->load();
 
-            $products = array();
-            $collection = Mage::getResourceModel('catalog/category_collection')
-                ->joinField('product_id',
-                    'catalog/category_product',
-                    'product_id',
-                    'category_id = entity_id',
-                    null)
-                ->addFieldToFilter('product_id', $productCollection->getColumnValues('entity_id'))
-                ->addAttributeToSelect('name')
-                ->setStoreId(Mage::app()->getStore()->getId())
-                ->groupByAttribute('entity_id');
-            foreach ($productCollection as $product) {
-                $categories = $collection->getItemsByColumnValue('product_id', $product->getId());
-                $categoryNames = array();
-                foreach ($categories as $category) {
-                    $categoryNames[] = $this->jsQuoteEscape($category->getName());
-                }
-                $products[$product->getSku()] = array(
-                    'name'     => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getName())),
-                    'sku'      => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getSku())),
-                    'category' => implode('|', $categoryNames),
-                    'price'    => (double)number_format($product->getFinalPrice(), 2, '.', ''),
-                );
+            Mage::register('eralis_product_list', $productCollection->load());
+        }
+
+        return Mage::registry('eralis_product_list');
+
+    }
+
+    /**
+     * Retrieve loaded category collection
+     *
+     * @return Mage_Eav_Model_Entity_Collection_Abstract
+     */
+    protected function _getProductCollection()
+    {
+        if (is_null($this->_productCollection)) {
+            $layer = $this->_getLayer();
+            /* @var $layer Mage_Catalog_Model_Layer */
+            if ($this->getShowRootCategory()) {
+                $this->setCategoryId(Mage::app()->getStore()->getRootCategoryId());
             }
 
-            foreach ($products as $product) {
-                $data['categoryProducts'][] = $product;
+            // if this is a product view page
+            if (Mage::registry('product')) {
+                // get collection of categories this product is associated with
+                $categories = Mage::registry('product')->getCategoryCollection()
+                    ->setPage(1, 1)
+                    ->load();
+                // if the product is associated with any category
+                if ($categories->count()) {
+                    // show products from this category
+                    $this->setCategoryId(current($categories->getIterator()));
+                }
+            }
+
+            $origCategory = null;
+            if ($this->getCategoryId()) {
+                $category = Mage::getModel('catalog/category')->load($this->getCategoryId());
+                if ($category->getId()) {
+                    $origCategory = $layer->getCurrentCategory();
+                    $layer->setCurrentCategory($category);
+                    $this->addModelTags($category);
+                }
+            }
+            $this->_productCollection = $layer->getProductCollection();
+
+            if ($origCategory) {
+                $layer->setCurrentCategory($origCategory);
             }
         }
-        return $data;
+
+        return $this->_productCollection;
     }
 
     /**
-     * @return Mage_Catalog_Model_Product
+     * Get catalog layer model
+     *
+     * @return Mage_Catalog_Model_Layer
      */
-    public function getProduct()
+    protected function _getLayer()
     {
-        return Mage::registry('current_product');
-    }
-
-    /**
-     * @return Mage_Catalog_Model_Category
-     */
-    public function getCategory()
-    {
-        return Mage::registry('current_category');
+        $layer = Mage::registry('current_layer');
+        if ($layer) {
+            return $layer;
+        }
+        return Mage::getSingleton('catalog/layer');
     }
 
     /**
@@ -160,12 +312,6 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
 
             /** @var Mage_Sales_Model_Resource_Quote_Item_Collection $quoteItemCollection */
             $quoteItemCollection = $quote->getItemsCollection();
-            /** @var Mage_Catalog_Model_Resource_Product_Collection $productCollection */
-            $productCollection = Mage::getResourceModel('catalog/product_collection')
-                ->addIdFilter($quoteItemCollection->getColumnValues('product_id'))
-                ->addAttributeToSelect('name')
-                ->addCategoryIds()
-                ->addStoreFilter($quote->getStore());
             $includeInvisible = (bool) Mage::getStoreConfig(self::XML_CONFIG_PATH_QUOTE_DATA_INCLUDE_INVISIBLE_ITEMS);
             $products = array();
             /** @var Mage_Sales_Model_Quote_Item $item */
@@ -340,8 +486,10 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                             'transactionType'           => 'ORDER',
                             'transactionAffiliation'    => $this->getWebsiteName(),
                             'transactionTotal'          => round($order->getBaseGrandTotal(), 2),
+                            'transactionSubtotal'       => round($order->getBaseSubtotal(), 2),
                             'transactionShipping'       => round($order->getBaseShippingAmount(), 2),
                             'transactionTax'            => round($order->getBaseTaxAmount(), 2),
+                            'transactionDiscount'       => round($order->getBaseDiscountAmount(), 2),
                             'transactionPaymentType'    => $order->getPayment()->getMethodInstance()->getTitle(),
                             'transactionCurrency'       => $order->getBaseCurrencyCode(),
                             'purchaseCurrency'          => $order->getOrderCurrencyCode(),
@@ -350,27 +498,27 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                             'transactionProducts'       => array()
                         );
                     } else {
-                        $data['transactionId'] .= '|' . $order->getIncrementId();
-                        $data['transactionTotal'] += $order->getBaseGrandTotal();
-                        $data['transactionShipping'] += $order->getBaseShippingAmount();
-                        $data['transactionTax'] += $order->getBaseTaxAmount();
-                        $data['transactionShippingMethod'] .= '|' . $order->getShippingCarrier()->getCarrierCode();
+                        $data['transactionId']              .= '|' . $order->getIncrementId();
+                        $data['transactionTotal']           += $order->getBaseGrandTotal();
+                        $data['transactionShipping']        += $order->getBaseShippingAmount();
+                        $data['transactionTax']             += $order->getBaseTaxAmount();
+                        $data['transactionShippingMethod']  .= '|' . $order->getShippingCarrier()->getCarrierCode();
                     }
 
-                    $customer = Mage::getSingleton('customer/session');
-                    if ($customer->isLoggedIn()) {
+                    $customerSession = Mage::getSingleton('customer/session');
+                    if ($customerSession->isLoggedIn()) {
                         $data['purchaseNumber'] = 1;
                         /** @var Mage_Sales_Model_Resource_Order_Collection $customerOrderCollection */
                         $customerOrderCollection = Mage::getModel('sales/order')->getCollection()
-                            ->addFieldToFilter('customer_id', $customer->getId())
+                            ->addFieldToFilter('customer_id', $customerSession->getId())
                             ->addFieldToFilter('entity_id', array('nin' => $orderIds))
                             ->addFieldToFilter('status', array('nin' => array('canceled', 'pay_aborted')))
                             ->setOrder('created_at');
                         if ($customerOrderCollection && $customerOrderCollection->count()) {
-                            $data['purchaseNumber'] += $customerOrderCollection->count();
-                            $lastOrderDate = new \DateTime($customerOrderCollection->getFirstItem()->getCreatedAt());
-                            $nowDate       = new \DateTime(Mage::getModel('core/date')->date());
-                            $data['daysSinceLastTransaction'] = $lastOrderDate->diff($nowDate)->format('%a');
+                            $data['purchaseNumber']             = $customerOrderCollection->count();
+                            $lastOrderDate                      = new \DateTime($customerOrderCollection->getFirstItem()->getCreatedAt());
+                            $nowDate                            = new \DateTime(Mage::getModel('core/date')->date());
+                            $data['daysSinceLastTransaction']   = $lastOrderDate->diff($nowDate)->format('%a');
                         }
                     } else {
                         $data['purchaseNumber'] = 0;
@@ -378,12 +526,6 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
 
                     /** @var Mage_Sales_Model_Resource_Order_Collection $salesItemCollection */
                     $salesItemCollection = $order->getItemsCollection();
-                    /** @var Mage_Catalog_Model_Resource_Product_Collection $productCollection */
-                    $productCollection = Mage::getResourceModel('catalog/product_collection')
-                        ->addIdFilter($salesItemCollection->getColumnValues('product_id'))
-                        ->addAttributeToSelect('name')
-                        ->addCategoryIds()
-                        ->addStoreFilter($order->getStore());
                     $includeInvisible = (bool) Mage::getStoreConfig(self::XML_CONFIG_PATH_ORDER_DATA_INCLUDE_INVISIBLE_ITEMS);
                     /** @var Mage_Sales_Model_Order_Item $item */
                     foreach ($salesItemCollection as $item) {
@@ -428,22 +570,5 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
     public function getWebsiteName()
     {
         return Mage::app()->getWebsite()->getName();
-    }
-
-    /**
-     * @param float $price
-     * @return float
-     */
-    protected function _convertCurrency($price)
-    {
-        $from = Mage::app()->getStore()->getBaseCurrencyCode();
-        $to = Mage::app()->getStore()->getCurrentCurrencyCode();
-
-        if ($from != $to) {
-            $price = Mage::helper('directory')->currencyConvert($price, $from, $to);
-            $price = Mage::app()->getStore()->roundPrice($price);
-        }
-
-        return $price;
     }
 }
