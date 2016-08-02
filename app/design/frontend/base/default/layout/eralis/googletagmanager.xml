@@ -3,7 +3,7 @@
     <default>
         <reference name="after_body_start">
             <block type="eralis_googletagmanager/head" name="eralis.googletagmanger.head" template="eralis/googletagmanager/head.phtml">
-                <block type="eralis_googletagmanager/datalayer" name="eralis.googletagmanager.datalayer" template="eralis/googletagmanager/datalayer.phtml"/>
+                <block type="eralis_googletagmanager/datalayer" name="eralis.googletagmanager.datalayer" as="datalayer" template="eralis/googletagmanager/datalayer.phtml"/>
             </block>
         </reference>
     </default>
