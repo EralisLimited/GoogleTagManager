@@ -60,6 +60,7 @@
                 <customer_data_enabled>1</customer_data_enabled>
                 <order_data_enabled>1</order_data_enabled>
                 <quote_data_enabled>1</quote_data_enabled>
+                <transaction_layout_handles>checkout_onepage_success</transaction_layout_handles>
             </data_layer>
             <customer_data>
                 <existing_customer_mode>grand_total,basket,registered</existing_customer_mode>
