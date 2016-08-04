@@ -93,6 +93,7 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
 
             $data += array(
                 'productId'           => $product->getId(),
+                'productSku'          => $this->jsQuoteEscape($product->getSku()),
                 'productPrice'        => Mage::helper('core')->currency($_finalPrice, false, false),
                 'productOldPrice'     => Mage::helper('core')->currency($_regularPrice, false, false),
                 'priceInclTax'        => Mage::helper('core')->currency($_priceInclTax, false, false),
