@@ -48,18 +48,22 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
         $data = array();
         /* @var $product Mage_Catalog_Model_Product */
         $product = $this->getProduct();
+        $defaultTax = false;
+        $currentTax = false;
 
         if ($product) {
             $data['productName'] = $this->jsQuoteEscape($product->getName());
-
             $_request = Mage::getSingleton('tax/calculation')->getDefaultRateRequest();
 
-            $_request->setProductClassId($product->getTaxClassId());
-            $defaultTax = Mage::getSingleton('tax/calculation')->getRate($_request);
+            if ($_request) {
+                $_request->setProductClassId($product->getTaxClassId());
+                $defaultTax = Mage::getSingleton('tax/calculation')->getRate($_request);
 
-            $_request = Mage::getSingleton('tax/calculation')->getRateRequest();
-            $_request->setProductClassId($product->getTaxClassId());
-            $currentTax = Mage::getSingleton('tax/calculation')->getRate($_request);
+                $_request = Mage::getSingleton('tax/calculation')->getRateRequest();
+                $_request->setProductClassId($product->getTaxClassId());
+                $currentTax = Mage::getSingleton('tax/calculation')->getRate($_request);
+            }
+
 
             $_regularPrice = $product->getPrice();
             $_finalPrice = $product->getFinalPrice();
@@ -98,8 +102,8 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                 'productOldPrice'     => Mage::helper('core')->currency($_regularPrice, false, false),
                 'priceInclTax'        => Mage::helper('core')->currency($_priceInclTax, false, false),
                 'priceExclTax'        => Mage::helper('core')->currency($_priceExclTax, false, false),
-                'defaultTax'          => $defaultTax,
-                'currentTax'          => $currentTax,
+                'defaultTax'          => $defaultTax ? $defaultTax : '',
+                'currentTax'          => $currentTax ? $currentTax : '',
                 'tierPrices'          => $_tierPrices,
                 'tierPricesInclTax'   => $_tierPricesInclTax,
                 'categories'          => implode('|', $categoryCollection->getColumnValues('name'))
