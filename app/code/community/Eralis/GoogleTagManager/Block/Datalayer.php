@@ -8,9 +8,13 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
      */
     public function getDataLayer()
     {
-        $dataLayer = array(
-            'pageType' => Mage::helper('eralis_googletagmanager')->getFullActionName()
-        );
+        $dataLayer = [
+            'pageType'          => Mage::helper('eralis_googletagmanager')->getFullActionName(),
+            'currency'          => Mage::app()->getStore()->getCurrentCurrencyCode(),
+            'base_currency'     => Mage::app()->getStore()->getBaseCurrencyCode(),
+            'default_currency'  => Mage::app()->getStore()->getDefaultCurrencyCode(),
+            'currency_rate'     => Mage::app()->getStore()->getCurrentCurrencyRate()
+        ];
 
         $dataLayer += $this->_getCustomerData();
         $dataLayer += $this->_getQuoteData();
