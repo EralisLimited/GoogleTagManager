@@ -11,9 +11,10 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
         $dataLayer = [
             'pageType'          => Mage::helper('eralis_googletagmanager')->getFullActionName(),
             'currency'          => Mage::app()->getStore()->getCurrentCurrencyCode(),
-            'baseCurrency'      => Mage::app()->getStore()->getBaseCurrencyCode(),
-            'defaultCurrency'   => Mage::app()->getStore()->getDefaultCurrencyCode(),
-            'currencyRate'      => Mage::app()->getStore()->getCurrentCurrencyRate()
+            'base_currency'     => Mage::app()->getStore()->getBaseCurrencyCode(),
+            'default_currency'  => Mage::app()->getStore()->getDefaultCurrencyCode(),
+            'currency_rate'     => Mage::app()->getStore()->getCurrentCurrencyRate(),
+            'store_code'        => Mage::app()->getStore()->getCode()
         ];
 
         $dataLayer += $this->_getCustomerData();
@@ -325,26 +326,28 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
             $products = array();
             /** @var Mage_Sales_Model_Quote_Item $item */
             foreach ($quoteItemCollection as $item) {
-                if (!$item->isDeleted() && empty($products[$item->getSku()]) && (!$item->getParentItemId() || ($includeInvisible && $item->getParentItemId()))) {
-                    /** @var Mage_Catalog_Model_Resource_Category_Collection $collection */
-                    $collection = Mage::getResourceModel('catalog/category_collection')
-                        ->joinField('product_id',
-                            'catalog/category_product',
-                            'product_id',
-                            'category_id = entity_id',
-                            null)
-                        ->addFieldToFilter('product_id', (int)$item->getProductId())
-                        ->addAttributeToSelect('name')
-                        ->setStoreId($quote->getStoreId());
-                    $products[$item->getSku()] = array(
-                        'name'     => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getName())),
-                        'sku'      => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getSku())),
-                        'category' => implode('|', $collection->getColumnValues('name')),
-                        'price'    => (double)number_format($item->getBasePrice(), 2, '.', ''),
-                        'quantity' => (int)$item->getQty()
-                    );
-                } else {
-                    $products[$item->getSku()]['quantity'] += (int)$item->getQtyOrdered();
+                if (!$item->isDeleted() && (!$item->getParentItemId() || ($includeInvisible && $item->getParentItemId()))) {
+                    if (empty($products[$item->getSku()])) {
+                        /** @var Mage_Catalog_Model_Resource_Category_Collection $collection */
+                        $collection = Mage::getResourceModel('catalog/category_collection')
+                            ->joinField('product_id',
+                                'catalog/category_product',
+                                'product_id',
+                                'category_id = entity_id',
+                                null)
+                            ->addFieldToFilter('product_id', (int) $item->getProductId())
+                            ->addAttributeToSelect('name')
+                            ->setStoreId($quote->getStoreId());
+                        $products[$item->getSku()] = [
+                            'name'     => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getName())),
+                            'sku'      => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getSku())),
+                            'category' => implode('|', $collection->getColumnValues('name')),
+                            'price'    => (double) number_format($item->getPrice(), 2, '.', ''),
+                            'quantity' => (int) $item->getQty(),
+                        ];
+                    } else {
+                        $products[$item->getSku()]['quantity'] += (int) $item->getQtyOrdered();
+                    }
                 }
             }
             foreach ($products as $product) {
@@ -458,7 +461,7 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                             'name'      => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getName())),
                             'sku'       => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($product->getSku())),
                             'category'  => implode('|', $categoryCollection->getColumnValues('name')),
-                            'price'     => (double)number_format($product->getFinalPrice(), 2, '.', ''),
+                            'price'     => (double)number_format($product->getPrice(), 2, '.', ''),
                             'viewed_at' => date('Y-m-d H:m:s', strtotime($product->getAddedAt()))
                         );
                     }
@@ -538,26 +541,29 @@ class Eralis_GoogleTagManager_Block_Datalayer extends Eralis_GoogleTagManager_Bl
                     $includeInvisible = (bool) Mage::getStoreConfig(self::XML_CONFIG_PATH_ORDER_DATA_INCLUDE_INVISIBLE_ITEMS);
                     /** @var Mage_Sales_Model_Order_Item $item */
                     foreach ($salesItemCollection as $item) {
-                        if (!$item->isDeleted() && empty($products[$item->getSku()]) && (!$item->getParentItemId() || ($includeInvisible && $item->getParentItemId()))) {
-                            /** @var Mage_Catalog_Model_Resource_Category_Collection $collection */
-                            $collection = Mage::getResourceModel('catalog/category_collection')
-                                ->joinField('product_id',
-                                    'catalog/category_product',
-                                    'product_id',
-                                    'category_id = entity_id',
-                                    null)
-                                ->addFieldToFilter('product_id', (int)$item->getProductId())
-                                ->addAttributeToSelect('name')
-                                ->setStoreId($order->getStoreId());
-                            $products[$item->getSku()] = array(
-                                'name'     => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getName())),
-                                'sku'      => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getSku())),
-                                'category' => implode('|', $collection->getColumnValues('name')),
-                                'price'    => (double)number_format($item->getBasePrice(), 2, '.', ''),
-                                'quantity' => (int)$item->getQtyOrdered()
-                            );
-                        } else {
-                            $products[$item->getSku()]['quantity'] += (int)$item->getQtyOrdered();
+                        if (!$item->isDeleted() && (!$item->getParentItemId() || ($includeInvisible && $item->getParentItemId()))) {
+                            if (empty($products[$item->getSku()])) {
+                                /** @var Mage_Catalog_Model_Resource_Category_Collection $collection */
+                                $collection = Mage::getResourceModel('catalog/category_collection')
+                                    ->joinField('product_id',
+                                        'catalog/category_product',
+                                        'product_id',
+                                        'category_id = entity_id',
+                                        null)
+                                    ->addFieldToFilter('product_id', (int) $item->getProductId())
+                                    ->addAttributeToSelect('name')
+                                    ->setStoreId($order->getStoreId());
+                                $products[$item->getSku()] = [
+                                    'name'       => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getName())),
+                                    'sku'        => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getSku())),
+                                    'category'   => implode('|', $collection->getColumnValues('name')),
+                                    'price'      => (double) number_format($item->getPrice(), 2, '.', ''),
+                                    'quantity'   => (int) $item->getQtyOrdered(),
+                                    'product_id' => $item->getProductId()
+                                ];
+                            } else {
+                                $products[$item->getSku()]['quantity'] += (int) $item->getQtyOrdered();
+                            }
                         }
                     }
                 }
